@@ -1,6 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permissions réseau pour permettre la connexion client-serveur -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <application
         android:allowBackup="true"
@@ -12,16 +15,23 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.CardioTempo"
         tools:targetApi="31">
+
         <activity
-            android:name=".MainActivity"
+            android:name=".SelectionActivity"
             android:exported="true"
             android:theme="@style/Theme.CardioTempo">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Déclaration de ServerActivity -->
+        <activity android:name=".ServerActivity" />
+
+        <!-- Si vous avez une activité pour le client, déclarez-la ici aussi -->
+        <activity android:name=".MainActivity" />
+
     </application>
 
 </manifest>
