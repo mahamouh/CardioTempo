@@ -29,7 +29,7 @@
         app:layout_constraintEnd_toEndOf="@id/centerCircle"
         app:layout_constraintStart_toStartOf="@id/centerCircle"
         app:layout_constraintTop_toTopOf="@id/centerCircle"
-        android:layout_marginBottom="150dp"
+        android:layout_marginBottom="160dp"
         />
 
     <!-- Bouton Bas -->
@@ -43,14 +43,14 @@
         app:layout_constraintEnd_toEndOf="@id/centerCircle"
         app:layout_constraintStart_toStartOf="@id/centerCircle"
         app:layout_constraintBottom_toBottomOf="@id/centerCircle"
-        android:layout_marginTop="150dp"
+        android:layout_marginTop="160dp"
         />
 
     <!-- Bouton passage mode cardiaque -->
     <Button
         android:id="@+id/autoModeButton"
         android:layout_width="150dp"
-        android:layout_height="150dp"
+        android:layout_height="60dp"
         android:text="Auto"
         android:textSize="24sp"
         app:layout_constraintBottom_toBottomOf="@id/centerCircle"
