@@ -4,6 +4,7 @@ import android.media.AudioManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import androidx.appcompat.app.AppCompatActivity;
 import java.io.IOException;
@@ -65,27 +66,38 @@ public class ServerActivity extends AppCompatActivity {
 
             InputStream inputStream = clientSocket.getInputStream();
             byte[] buffer = new byte[1024];
-            int bytesRead = inputStream.read(buffer);
-            String message = new String(buffer, 0, bytesRead);
-            Log.d(TAG, "Message reçu du client: " + message);
+            int bytesRead;
 
-            if ("AUTO_MODE_ON".equals(message)) {
-                runOnUiThread(() -> {
-                    volumeControl.setEnabled(true);
-                    Log.d(TAG, "Mode automatique activé.");
-                });
+            while ((bytesRead = inputStream.read(buffer)) != -1) {
+                String message = new String(buffer, 0, bytesRead).trim();
+                Log.d(TAG, "Message du client : " + message);
+
+                ProgressBar volumeSeekBar = findViewById(R.id.volumeSeekBar);;
+                if (message.equals("AUTO_MODE_ON")) {
+                    // Change la couleur de la SeekBar en vert
+                    runOnUiThread(() -> {
+                        volumeSeekBar.setProgressDrawable(getResources().getDrawable(R.drawable.seekbar_green));
+                    });
+                    Log.d(TAG, "Mode automatique activé, SeekBar devient verte.");
+                } else if (message.equals("AUTO_MODE_OFF")) {
+                    // Réinitialise la couleur de la SeekBar
+                    runOnUiThread(() -> {
+                        volumeSeekBar.setProgressDrawable(getResources().getDrawable(R.drawable.seekbar_default));
+                    });
+                    Log.d(TAG, "Mode automatique désactivé, SeekBar revient à la couleur par défaut.");
+                }
             }
 
-            inputStream.close();
-            clientSocket.close();
         } catch (IOException e) {
-            Log.e(TAG, "Erreur dans le serveur: ", e);
+            e.printStackTrace();
+            Log.d(TAG, "Erreur du serveur : " + e.getMessage());
         }
     }
 
-    private int normalizeVolumeForClient(int serverVolume, int clientMaxVolume) {
-        int serverMaxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        return (serverVolume * clientMaxVolume) / serverMaxVolume;
+
+
+    private int normalizeVolumeForClient(int progress, int clientMaxVolume) {
+        return (int) ((progress / (float) audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)) * clientMaxVolume);
     }
 
     private void sendVolumeToClient(int volume) {
@@ -103,24 +115,10 @@ public class ServerActivity extends AppCompatActivity {
                     Log.d(TAG, "Volume envoyé au client : " + volumes[0]);
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Erreur lors de l'envoi du volume au client: ", e);
+                e.printStackTrace();
+                Log.d(TAG, "Erreur lors de l'envoi du volume au client : " + e.getMessage());
             }
             return null;
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try {
-            if (clientSocket != null) {
-                clientSocket.close();
-            }
-            if (serverSocket != null) {
-                serverSocket.close();
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Erreur lors de la fermeture des sockets: ", e);
         }
     }
 }

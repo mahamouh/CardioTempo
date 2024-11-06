@@ -6,9 +6,12 @@ import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.SeekBar;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.PrintWriter;
 import java.net.Socket;
 
 public class MainActivity extends AppCompatActivity {
@@ -49,7 +52,9 @@ public class MainActivity extends AppCompatActivity {
         autoModeButton.setOnClickListener(v -> {
             isAutoMode = !isAutoMode;
             if (isAutoMode) {
-                new SendAutoModeNotificationTask().execute();
+                new SendAutoModeNotificationTask().execute("AUTO_MODE_ON");
+            } else {
+                new SendAutoModeNotificationTask().execute("AUTO_MODE_OFF");
             }
         });
 
@@ -98,15 +103,41 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("Volume mis à jour depuis le serveur : " + currentVolume);
     }
 
-    private class SendAutoModeNotificationTask extends AsyncTask<Void, Void, Void> {
+    private void sendCurrentVolumeToServer() {
+        // Envoie le volume sous forme de pourcentage
+        int volumePercentage = (int) ((currentVolume / (float) maxVolume) * 100);
+        new SendVolumeToServerTask().execute(volumePercentage);
+    }
+
+    private class SendVolumeToServerTask extends AsyncTask<Integer, Void, Void> {
         @Override
-        protected Void doInBackground(Void... voids) {
+        protected Void doInBackground(Integer... volumes) {
+            try {
+                if (socket != null && socket.isConnected()) {
+                    OutputStream outputStream = socket.getOutputStream();
+                    outputStream.write(("Volume actuel:" + volumes[0]).getBytes());
+                    outputStream.flush();
+                    System.out.println("Volume actuel envoyé au serveur (pourcentage) : " + volumes[0]);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+    }
+
+    private class SendAutoModeNotificationTask extends AsyncTask<String, Void, Void> {
+        @Override
+        protected Void doInBackground(String... params) {
+            // Assurez-vous que le paramètre est bien passé
+            String command = params[0];
+
             if (socket != null && socket.isConnected()) {
                 try {
                     OutputStream outputStream = socket.getOutputStream();
-                    outputStream.write("AUTO_MODE_ON".getBytes());
+                    outputStream.write(command.getBytes());
                     outputStream.flush();
-                    System.out.println("Notification de mode automatique envoyée");
+                    System.out.println("Notification de mode automatique envoyée : " + command);
                 } catch (IOException e) {
                     e.printStackTrace();
                     System.out.println("Erreur lors de l'envoi de la notification : " + e.getMessage());
@@ -116,13 +147,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
     private void setPlayerVolume(int systemVolume, int customMaxVolume) {
         float volume = (float) systemVolume / customMaxVolume;
         mediaPlayer.setVolume(volume, volume);
     }
 
     private void increaseVolume(int customMaxVolume) {
-        if (!isAutoMode && currentVolume < customMaxVolume) {
+        if (currentVolume < customMaxVolume) {
             currentVolume += 5;
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, customMaxVolume);
@@ -131,7 +163,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void decreaseVolume() {
-        if (!isAutoMode && currentVolume > 0) {
+        if (currentVolume > 0) {
             currentVolume -= 5;
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, maxVolume);
