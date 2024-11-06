@@ -23,7 +23,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isAutoMode = false;
 
     // Constantes pour le volume initial et maximal personnalisé
-    private static final float INITIAL_VOLUME_PERCENTAGE = 0f;
+    private static final float INITIAL_VOLUME_PERCENTAGE = 0.3f;
     private static final float CUSTOM_MAX_VOLUME_PERCENTAGE = 1f;
 
     @Override
