@@ -15,7 +15,7 @@ import java.net.Socket;
 
 public class ServerActivity extends AppCompatActivity {
 
-    private static final String TAG = "ServerActivity"; // Pour identifier les logs
+    private static final String TAG = "ServerActivity";
     private AudioManager audioManager;
     private ServerSocket serverSocket;
     private Socket clientSocket;
@@ -34,9 +34,11 @@ public class ServerActivity extends AppCompatActivity {
         volumeControl.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                sendVolumeToClient(progress); // Envoyer le volume au client
+                int clientMaxVolume = 150; // Volume max de l'échelle client
+                int normalizedVolume = normalizeVolumeForClient(progress, clientMaxVolume);
+                sendVolumeToClient(normalizedVolume);
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
-                Log.d(TAG, "Volume changé: " + progress); // Log du changement de volume
+                Log.d(TAG, "Volume changé: " + progress + " - Volume normalisé pour le client : " + normalizedVolume);
             }
 
             @Override
@@ -58,33 +60,36 @@ public class ServerActivity extends AppCompatActivity {
             serverSocket = new ServerSocket(SERVER_PORT);
             Log.d(TAG, "Serveur démarré, en attente de connexion...");
 
-            clientSocket = serverSocket.accept(); // Accepte la connexion du client
+            clientSocket = serverSocket.accept();
             Log.d(TAG, "Client connecté: " + clientSocket.getInetAddress());
 
             InputStream inputStream = clientSocket.getInputStream();
             byte[] buffer = new byte[1024];
-            int bytesRead;
+            int bytesRead = inputStream.read(buffer);
+            String message = new String(buffer, 0, bytesRead);
+            Log.d(TAG, "Message reçu du client: " + message);
 
-            while ((bytesRead = inputStream.read(buffer)) != -1) {  // Écouter en continu
-                String message = new String(buffer, 0, bytesRead).trim();
-                Log.d(TAG, "Message reçu du client: " + message);
-
-                if ("AUTO_MODE_ON".equals(message)) {
-                    runOnUiThread(() -> {
-                        volumeControl.setEnabled(true);
-                        Log.d(TAG, "Mode automatique activé.");
-                    });
-                }
+            if ("AUTO_MODE_ON".equals(message)) {
+                runOnUiThread(() -> {
+                    volumeControl.setEnabled(true);
+                    Log.d(TAG, "Mode automatique activé.");
+                });
             }
-            // Ne pas fermer inputStream et clientSocket ici pour permettre la communication continue
+
+            inputStream.close();
+            clientSocket.close();
         } catch (IOException e) {
             Log.e(TAG, "Erreur dans le serveur: ", e);
         }
     }
 
+    private int normalizeVolumeForClient(int serverVolume, int clientMaxVolume) {
+        int serverMaxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        return (serverVolume * clientMaxVolume) / serverMaxVolume;
+    }
 
     private void sendVolumeToClient(int volume) {
-        new SendVolumeTask().execute(volume); // Exécute la tâche asynchrone pour envoyer le volume
+        new SendVolumeTask().execute(volume);
     }
 
     private class SendVolumeTask extends AsyncTask<Integer, Void, Void> {
@@ -93,13 +98,9 @@ public class ServerActivity extends AppCompatActivity {
             try {
                 if (clientSocket != null && clientSocket.isConnected()) {
                     OutputStream outputStream = clientSocket.getOutputStream();
-                    PrintWriter writer = new PrintWriter(outputStream);
-                    // Ajouter le préfixe attendu par le client
-                    writer.println("Volume envoyé au client:" + volumes[0]);
-                    writer.flush();
-                    Log.d(TAG, "Volume envoyé au client: " + volumes[0]); // Log du volume envoyé
-                } else {
-                    Log.w(TAG, "Le client n'est pas connecté ou le socket est nul.");
+                    PrintWriter writer = new PrintWriter(outputStream, true);
+                    writer.println("Volume envoyé au client: " + volumes[0]);
+                    Log.d(TAG, "Volume envoyé au client : " + volumes[0]);
                 }
             } catch (IOException e) {
                 Log.e(TAG, "Erreur lors de l'envoi du volume au client: ", e);
@@ -108,18 +109,15 @@ public class ServerActivity extends AppCompatActivity {
         }
     }
 
-
     @Override
     protected void onDestroy() {
         super.onDestroy();
         try {
-            if (serverSocket != null) {
-                serverSocket.close();
-                Log.d(TAG, "Serveur arrêté.");
-            }
             if (clientSocket != null) {
                 clientSocket.close();
-                Log.d(TAG, "Client déconnecté.");
+            }
+            if (serverSocket != null) {
+                serverSocket.close();
             }
         } catch (IOException e) {
             Log.e(TAG, "Erreur lors de la fermeture des sockets: ", e);

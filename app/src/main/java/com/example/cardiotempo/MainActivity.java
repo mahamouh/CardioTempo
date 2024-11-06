@@ -18,13 +18,13 @@ public class MainActivity extends AppCompatActivity {
     private int maxVolume;
     private int currentVolume;
     private Socket socket;
-    private static final String SERVER_IP = "192.168.1.26";
+    private static final String SERVER_IP = "100.83.111.17";
     private static final int SERVER_PORT = 5000;
     private boolean isAutoMode = false;
 
     // Constantes pour le volume initial et maximal personnalisé
-    private static final float INITIAL_VOLUME_PERCENTAGE = 0.3f;
-    private static final float CUSTOM_MAX_VOLUME_PERCENTAGE = 0.8f;
+    private static final float INITIAL_VOLUME_PERCENTAGE = 0f;
+    private static final float CUSTOM_MAX_VOLUME_PERCENTAGE = 1f;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -70,24 +70,11 @@ public class MainActivity extends AppCompatActivity {
                     String message = new String(buffer, 0, bytesRead).trim();
                     System.out.println("Message brut reçu du serveur : " + message);
 
-                    // Vérifier si le message contient le motif "Volume envoyé au client:"
                     if (message.contains("Volume envoyé au client:")) {
                         try {
-                            // Extraire la valeur numérique après "Volume envoyé au client:"
                             String[] parts = message.split(":");
                             int newVolume = Integer.parseInt(parts[1].trim());
-
-                            // Vérifier que le volume est dans les limites autorisées
-                            if (newVolume >= 0 && newVolume <= maxVolume) {
-                                runOnUiThread(() -> {
-                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVolume, 0);
-                                    currentVolume = newVolume; // Mise à jour du volume actuel
-                                    setPlayerVolume(currentVolume, maxVolume);
-                                    System.out.println("Volume mis à jour à : " + currentVolume);
-                                });
-                            } else {
-                                System.out.println("Volume reçu en dehors des limites : " + newVolume);
-                            }
+                            updateVolumeFromServer(newVolume); // Utilise la méthode de normalisation
                         } catch (NumberFormatException e) {
                             System.out.println("Erreur de format du volume reçu : " + message);
                         }
@@ -101,6 +88,14 @@ public class MainActivity extends AppCompatActivity {
             }
             return null;
         }
+    }
+
+    private void updateVolumeFromServer(int receivedVolume) {
+        int normalizedVolume = Math.min(receivedVolume, maxVolume); // Limite le volume reçu au max du client
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, normalizedVolume, 0);
+        currentVolume = normalizedVolume;
+        setPlayerVolume(currentVolume, maxVolume);
+        System.out.println("Volume mis à jour depuis le serveur : " + currentVolume);
     }
 
     private class SendAutoModeNotificationTask extends AsyncTask<Void, Void, Void> {
@@ -128,7 +123,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void increaseVolume(int customMaxVolume) {
         if (!isAutoMode && currentVolume < customMaxVolume) {
-            currentVolume++;
+            currentVolume += 5;
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, customMaxVolume);
             System.out.println("Volume augmenté à : " + currentVolume);
@@ -137,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void decreaseVolume() {
         if (!isAutoMode && currentVolume > 0) {
-            currentVolume--;
+            currentVolume -= 5;
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, maxVolume);
             System.out.println("Volume diminué à : " + currentVolume);
