@@ -33,9 +33,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int SERVER_PORT = 5000;
     private boolean isAutoMode = false;
 
-    private static final float INITIAL_VOLUME_PERCENTAGE = 0.3f;
-    private static final float CLIENT_MAX_VOLUME_PERCENTAGE = 0.6f; // 60% du volume max
-    private int clientMaxVolume = 90;
+    private static final float INITIAL_VOLUME_PERCENTAGE = 0.4f;
+    private int clientMaxVolume = 150;
 
     public MusicThread musicThread;
 
@@ -71,9 +70,9 @@ public class MainActivity extends AppCompatActivity {
             return isMusicPlayerInitialized;
         }
 
-        public void setPlayerVolume(int systemVolume, int customMaxVolume) {
+        public void setPlayerVolume(int systemVolume) {
             if (isMusicPlayerInitialized) {
-                float volume = (float) systemVolume / customMaxVolume;
+                float volume = (float) systemVolume / clientMaxVolume;
                 mediaPlayer.setVolume(volume, volume);
             }
         }
@@ -114,7 +113,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         currentVolume = (int) (clientMaxVolume * INITIAL_VOLUME_PERCENTAGE);
-        setPlayerVolume(currentVolume, clientMaxVolume);
+        setPlayerVolume(currentVolume);
 
         Button increaseVolumeButton = findViewById(R.id.increaseVolumeButton);
         increaseVolumeButton.setOnClickListener(v -> increaseVolume());
@@ -225,13 +224,13 @@ public class MainActivity extends AppCompatActivity {
         currentVolume = receivedVolume*10;
 
         // Mettre à jour le volume du MediaPlayer
-        setPlayerVolume(currentVolume, clientMaxVolume);
+        setPlayerVolume(currentVolume);
 
     }
 
 
-    private void setPlayerVolume(int systemVolume, int customMaxVolume) {
-        musicThread.setPlayerVolume(systemVolume, customMaxVolume);
+    private void setPlayerVolume(int systemVolume) {
+        musicThread.setPlayerVolume(systemVolume);
     }
 
     private void increaseVolume() {
@@ -240,7 +239,7 @@ public class MainActivity extends AppCompatActivity {
             currentVolume = min(currentVolume, clientMaxVolume);
             System.out.println("custom volume increase : " + clientMaxVolume);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
-            setPlayerVolume(currentVolume, clientMaxVolume);
+            setPlayerVolume(currentVolume);
 
             // Assurez-vous que le message est envoyé au serveur
             sendToServer("Volume actuel brut:" + currentVolume); // Message envoyé au serveur
@@ -254,7 +253,7 @@ public class MainActivity extends AppCompatActivity {
             currentVolume = max(currentVolume, 0);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             System.out.println("max : " + clientMaxVolume);
-            setPlayerVolume(currentVolume, clientMaxVolume);
+            setPlayerVolume(currentVolume);
 
             // Assurez-vous que le message est envoyé au serveur
             sendToServer("Volume actuel:" + currentVolume); // Message envoyé au serveur

@@ -38,10 +38,10 @@ public class ServerActivity extends AppCompatActivity {
 
         volumeControl = findViewById(R.id.volumeSeekBar);
         int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int serverMaxVolume = (int) (0.6 * maxVolume); // 60 % du volume maximal
+        int serverMaxVolume = (int) (0.8 * maxVolume); // 60 % du volume maximal
 
         volumeControl.setMax(serverMaxVolume);
-        int initialVolume = (int) (0.3 * serverMaxVolume); // 30 % du volume maximal fixé à 60 %
+        int initialVolume = (int) (0.4 * serverMaxVolume); // 30 % du volume maximal fixé à 60 %
         volumeControl.setProgress(initialVolume);
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, initialVolume, 0);
 
