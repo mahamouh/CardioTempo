@@ -1,10 +1,9 @@
 package com.example.cardiotempo;
 
 import android.media.AudioManager;
-import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
-import android.widget.ProgressBar;
 import android.widget.SeekBar;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -15,6 +14,8 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ServerActivity extends AppCompatActivity {
 
@@ -24,6 +25,9 @@ public class ServerActivity extends AppCompatActivity {
     private Socket clientSocket;
     private static final int SERVER_PORT = 5000;
     private SeekBar volumeControl;
+    private int clientMaxVolume = 90; // 60 % de l'échelle précédente
+    private ExecutorService executorService; // Executor pour gérer les threads en arrière-plan
+    private Handler handler;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,12 +37,18 @@ public class ServerActivity extends AppCompatActivity {
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
 
         volumeControl = findViewById(R.id.volumeSeekBar);
-        volumeControl.setMax(audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC));
+        int maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int serverMaxVolume = (int) (0.6 * maxVolume); // 60 % du volume maximal
+
+        volumeControl.setMax(serverMaxVolume);
+        int initialVolume = (int) (0.3 * serverMaxVolume); // 30 % du volume maximal fixé à 60 %
+        volumeControl.setProgress(initialVolume);
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, initialVolume, 0);
+
         volumeControl.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int clientMaxVolume = 150;
-                int normalizedVolume = normalizeVolumeForClient(progress, clientMaxVolume);
+                int normalizedVolume = (int) ((progress / (float) volumeControl.getMax()) * clientMaxVolume);
                 sendVolumeToClient(normalizedVolume);
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
                 Log.d(TAG, "Volume changé: " + progress + " - Volume normalisé pour le client : " + normalizedVolume);
@@ -55,7 +65,11 @@ public class ServerActivity extends AppCompatActivity {
             }
         });
 
-        new Thread(this::startServer).start();
+        // Initialiser le Handler et l'ExecutorService
+        handler = new Handler();
+        executorService = Executors.newFixedThreadPool(2); // On crée un pool de threads pour exécuter les tâches en arrière-plan
+
+        new Thread(this::startServer).start(); // Démarrer le serveur dans un thread séparé
     }
 
     private void startServer() {
@@ -66,49 +80,68 @@ public class ServerActivity extends AppCompatActivity {
             clientSocket = serverSocket.accept();
             Log.d(TAG, "Client connecté: " + clientSocket.getInetAddress());
 
-            InputStream inputStream = clientSocket.getInputStream();
-            byte[] buffer = new byte[1024];
-            int bytesRead;
+            // Thread pour écouter les messages entrants du client (réception des données)
+            executorService.execute(() -> {
+                try {
+                    InputStream inputStream = clientSocket.getInputStream();
+                    byte[] buffer = new byte[1024];
+                    int bytesRead;
+                    while ((bytesRead = inputStream.read(buffer)) != -1) {
+                        String message = new String(buffer, 0, bytesRead).trim();
+                        Log.d(TAG, "Message reçu: " + message);
 
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                String message = new String(buffer, 0, bytesRead).trim();
-                Log.d(TAG, "Message reçu: " + message);
-
-                if (message.contains("Volume actuel")) {
-                    String[] parts = message.split(":");
-                    int volume = Integer.parseInt(parts[1].trim());
-                    volumeControl.setProgress(volume);
+                        if (message.contains("Volume actuel")) {
+                            String[] parts = message.split(":");
+                            int volume = Integer.parseInt(parts[1].trim());
+                            runOnUiThread(() -> volumeControl.setProgress(volume));  // Mettre à jour la SeekBar dans l'UI
+                        }
+                    }
+                } catch (IOException e) {
+                    Log.e(TAG, "Erreur de lecture du client : " + e.getMessage());
                 }
-            }
+            });
+
+            // Thread pour envoyer des messages au client toutes les 200ms sans bloquer
+            executorService.execute(() -> {
+                try {
+                    OutputStream outputStream = clientSocket.getOutputStream();
+                    PrintWriter writer = new PrintWriter(outputStream, true);
+                    while (true) {
+                        writer.println("Volume envoyé au client: " + audioManager.getStreamVolume(AudioManager.STREAM_MUSIC));
+                        Log.d(TAG, "Volume envoyé au client : " + audioManager.getStreamVolume(AudioManager.STREAM_MUSIC));
+                        Thread.sleep(2000); // Attendre avant d'envoyer un autre message
+                    }
+                } catch (IOException | InterruptedException e) {
+                    Log.e(TAG, "Erreur d'envoi au client : " + e.getMessage());
+                }
+            });
+
         } catch (IOException e) {
-            e.printStackTrace();
             Log.e(TAG, "Erreur de serveur : " + e.getMessage());
         }
     }
 
     private void sendVolumeToClient(int volume) {
-        new SendVolumeTask().execute(volume);
-    }
-
-    private class SendVolumeTask extends AsyncTask<Integer, Void, Void> {
-        @Override
-        protected Void doInBackground(Integer... volumes) {
+        executorService.execute(() -> {
             try {
                 if (clientSocket != null && clientSocket.isConnected()) {
                     OutputStream outputStream = clientSocket.getOutputStream();
                     PrintWriter writer = new PrintWriter(outputStream, true);
-                    writer.println("Volume envoyé au client: " + volumes[0]);
-                    Log.d(TAG, "Volume envoyé au client : " + volumes[0]);
+                    writer.println("Volume envoyé au client: " + volume);
+                    Log.d(TAG, "Volume envoyé au client : " + volume);
                 }
             } catch (IOException e) {
-                e.printStackTrace();
                 Log.e(TAG, "Erreur d'envoi du volume au client : " + e.getMessage());
             }
-            return null;
-        }
+        });
     }
 
-    private int normalizeVolumeForClient(int clientVolume, int clientMaxVolume) {
-        return (int) ((clientVolume / (float) audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)) * clientMaxVolume);
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Libérer les ressources et arrêter l'executorService
+        if (executorService != null) {
+            executorService.shutdown();
+        }
     }
 }

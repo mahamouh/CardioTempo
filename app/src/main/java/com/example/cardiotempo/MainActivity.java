@@ -1,15 +1,22 @@
 package com.example.cardiotempo;
 
+import static java.lang.Math.max;
+
 import androidx.appcompat.app.AppCompatActivity;
+
+import android.content.Context;
 import android.media.AudioManager;
 import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 
+import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.io.PrintWriter;
 import java.net.Socket;
 
 public class MainActivity extends AppCompatActivity {
@@ -19,35 +26,98 @@ public class MainActivity extends AppCompatActivity {
     private int maxVolume;
     private int currentVolume;
     private Socket socket;
-    private static final String SERVER_IP = "100.69.247.101";
+    private PrintWriter outputWriter;
+    private BufferedReader inputReader;
+    private static final String SERVER_IP = "100.69.247.101"; // Adresse IP du serveur
     private static final int SERVER_PORT = 5000;
     private boolean isAutoMode = false;
 
-    // Constantes pour le volume initial et maximal personnalisé
     private static final float INITIAL_VOLUME_PERCENTAGE = 0.3f;
-    private static final float CUSTOM_MAX_VOLUME_PERCENTAGE = 1f;
+    private static final float CLIENT_MAX_VOLUME_PERCENTAGE = 0.6f; // 60% du volume max
+    private int clientMaxVolume;
+
+    public MusicThread musicThread;
+
+    public class MusicThread extends Thread {
+        private MediaPlayer mediaPlayer;
+        private boolean isMusicPlayerInitialized = false; // Flag pour vérifier si MediaPlayer est prêt
+
+        @Override
+        public void run() {
+            try {
+                // Créez et configurez le lecteur de musique
+                mediaPlayer = MediaPlayer.create(MainActivity.this, R.raw.jetplane); // Changez le nom de votre fichier audio
+                mediaPlayer.setLooping(true); // Boucle la musique
+                mediaPlayer.start(); // Commence à jouer la musique
+
+                isMusicPlayerInitialized = true; // Marquer comme initialisé une fois que la musique commence
+
+                // Reste actif tant que la musique est en lecture
+                while (mediaPlayer.isPlaying()) {
+                    Thread.sleep(1000); // Attend une seconde avant de vérifier à nouveau
+                }
+
+            } catch (InterruptedException e) {
+                Log.e("MusicThread", "Erreur dans la lecture de la musique", e);
+            } finally {
+                if (mediaPlayer != null) {
+                    mediaPlayer.release(); // Libérer le MediaPlayer quand terminé
+                }
+            }
+        }
+
+        public boolean isMusicPlayerInitialized() {
+            return isMusicPlayerInitialized;
+        }
+
+        public void setPlayerVolume(int systemVolume, int customMaxVolume) {
+            if (isMusicPlayerInitialized) {
+                float volume = (float) systemVolume / customMaxVolume;
+                mediaPlayer.setVolume(volume, volume);
+            }
+        }
+
+        public void stopMusic() {
+            if (mediaPlayer != null) {
+                mediaPlayer.stop();
+                mediaPlayer.release();
+            }
+        }
+    }
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Define an uncaught exception handler for the app
-        Thread.setDefaultUncaughtExceptionHandler((thread, e) -> {
-            e.printStackTrace();
-            finish();  // Finish the activity if an uncaught exception occurs
-        });
+        // Initialisation de l'AudioManager
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
-        mediaPlayer = MediaPlayer.create(this, R.raw.jetplane);
-        audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
-        maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int customMaxVolume = (int) (maxVolume * CUSTOM_MAX_VOLUME_PERCENTAGE);
-        currentVolume = (int) (customMaxVolume * INITIAL_VOLUME_PERCENTAGE);
-        setPlayerVolume(currentVolume, customMaxVolume);
-        mediaPlayer.start();
+        // Vérifiez si l'audioManager est correctement initialisé
+        if (audioManager == null) {
+            Log.e("MainActivity", "Erreur : audioManager n'a pas pu être initialisé.");
+        }
+
+        musicThread = new MusicThread();
+        musicThread.start();
+
+        // Attendre que le MusicThread initialisé le MediaPlayer
+        while (!musicThread.isMusicPlayerInitialized()) {
+            try {
+                Thread.sleep(100); // Attendre un peu que le MediaPlayer soit prêt
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+
+        clientMaxVolume = (int) (maxVolume * CLIENT_MAX_VOLUME_PERCENTAGE); // 60% du volume max
+        currentVolume = (int) (clientMaxVolume * INITIAL_VOLUME_PERCENTAGE);
+        setPlayerVolume(currentVolume, clientMaxVolume);
 
         Button increaseVolumeButton = findViewById(R.id.increaseVolumeButton);
-        increaseVolumeButton.setOnClickListener(v -> increaseVolume(customMaxVolume));
+        increaseVolumeButton.setOnClickListener(v -> increaseVolume(clientMaxVolume));
 
         Button decreaseVolumeButton = findViewById(R.id.decreaseVolumeButton);
         decreaseVolumeButton.setOnClickListener(v -> decreaseVolume());
@@ -56,120 +126,156 @@ public class MainActivity extends AppCompatActivity {
         autoModeButton.setOnClickListener(v -> {
             isAutoMode = !isAutoMode;
             if (isAutoMode) {
-                new SendAutoModeNotificationTask().execute("AUTO_MODE_ON");
+                sendToServer("AUTO_MODE_ON");
             } else {
-                new SendAutoModeNotificationTask().execute("AUTO_MODE_OFF");
+                sendToServer("AUTO_MODE_OFF");
             }
         });
 
+        // Démarrer la connexion socket
         new InitializeSocketTask().execute();
     }
 
+    // Tâche pour initialiser la connexion socket et démarrer les threads de communication
     private class InitializeSocketTask extends AsyncTask<Void, Void, Void> {
         @Override
         protected Void doInBackground(Void... voids) {
             try {
                 socket = new Socket(SERVER_IP, SERVER_PORT);
                 System.out.println("Connecté au serveur à " + SERVER_IP + ":" + SERVER_PORT);
-                InputStream inputStream = socket.getInputStream();
-                byte[] buffer = new byte[1024];
-                int bytesRead;
 
-                while ((bytesRead = inputStream.read(buffer)) != -1) {
-                    String message = new String(buffer, 0, bytesRead).trim();
-                    System.out.println("Message brut reçu du serveur : " + message);
+                outputWriter = new PrintWriter(new OutputStreamWriter(socket.getOutputStream()), true);
+                inputReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 
-                    if (message.contains("Volume envoyé au client:")) {
-                        try {
-                            String[] parts = message.split(":");
-                            int newVolume = Integer.parseInt(parts[1].trim());
-                            updateVolumeFromServer(newVolume);
-                        } catch (NumberFormatException e) {
-                            System.out.println("Erreur de format du volume reçu : " + message);
-                        }
-                    } else {
-                        System.out.println("Message non reconnu : " + message);
-                    }
-                }
             } catch (IOException e) {
                 e.printStackTrace();
                 System.out.println("Erreur lors de la connexion au serveur : " + e.getMessage());
             }
             return null;
         }
+
+        protected void onPostExecute(Void result){
+            // Démarrer le thread de réception
+            new ReceiveMessageTask().executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+        }
     }
 
-    private void updateVolumeFromServer(int receivedVolume) {
-        int normalizedVolume = Math.min(receivedVolume, maxVolume);
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, normalizedVolume, 0);
-        currentVolume = normalizedVolume;
-        setPlayerVolume(currentVolume, maxVolume);
-        System.out.println("Volume mis à jour depuis le serveur : " + currentVolume);
-    }
-
-    private void sendCurrentVolumeToServer() {
-        int volumePercentage = (int) ((currentVolume / (float) maxVolume) * 100);
-        new SendVolumeToServerTask().execute(volumePercentage);
-    }
-
-    private class SendVolumeToServerTask extends AsyncTask<Integer, Void, Void> {
+    // Thread pour recevoir des messages depuis le serveur
+    private class ReceiveMessageTask extends AsyncTask<Void, String, Void> {
         @Override
-        protected Void doInBackground(Integer... volumes) {
+        protected Void doInBackground(Void... voids) {
             try {
-                if (socket != null && socket.isConnected()) {
-                    OutputStream outputStream = socket.getOutputStream();
-                    outputStream.write(("Volume actuel:" + volumes[0]).getBytes());
-                    outputStream.flush();
-                    System.out.println("Volume actuel envoyé au serveur (pourcentage) : " + volumes[0]);
+                String message;
+                while ((message = inputReader.readLine()) != null) {
+                    publishProgress(message);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
+                System.out.println("Erreur lors de la réception du message : " + e.getMessage());
             }
             return null;
         }
-    }
 
-    private class SendAutoModeNotificationTask extends AsyncTask<String, Void, Void> {
         @Override
-        protected Void doInBackground(String... params) {
-            String command = params[0];
+        protected void onProgressUpdate(String... messages) {
+            String message = messages[0];
+            System.out.println("Message reçu du serveur : " + message);
 
-            if (socket != null && socket.isConnected()) {
+            if (message.contains("Volume envoyé au client:")) {
                 try {
-                    OutputStream outputStream = socket.getOutputStream();
-                    outputStream.write(command.getBytes());
-                    outputStream.flush();
-                    System.out.println("Notification de mode automatique envoyée : " + command);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    System.out.println("Erreur lors de l'envoi de la notification : " + e.getMessage());
+                    String[] parts = message.split(":");
+                    int newVolume = Integer.parseInt(parts[1].trim());
+                    updateVolumeFromServer(newVolume);
+                } catch (NumberFormatException e) {
+                    System.out.println("Erreur de format du volume reçu : " + message);
                 }
+            } else {
+                System.out.println("Message non reconnu : " + message);
+            }
+        }
+    }
+
+    // Fonction pour envoyer des messages au serveur
+    private void sendToServer(String message) {
+        new SendMessageTask().execute(message);
+    }
+
+    private class SendMessageTask extends AsyncTask<String, Void, Void> {
+        @Override
+        protected Void doInBackground(String... messages) {
+            String message = messages[0];
+            try {
+                if (outputWriter != null) {
+                    outputWriter.println(message);
+                    outputWriter.flush();
+                    System.out.println("Message envoyé au serveur : " + message);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                System.out.println("Erreur lors de l'envoi du message : " + e.getMessage());
             }
             return null;
         }
     }
+
+    private void updateVolumeFromServer(int receivedVolume) {
+        // Normalisation du volume reçu (échelle 0-150) à l'échelle système
+        int denormalizedVolume = (int) ((receivedVolume / 90.0) * clientMaxVolume);
+
+        // Vérifiez que le volume est dans les limites acceptables
+        if (denormalizedVolume > clientMaxVolume) {
+            denormalizedVolume = clientMaxVolume;
+        }
+        if (denormalizedVolume < 0) {
+            denormalizedVolume = 0;
+        }
+
+        // Appliquer le volume au système audio
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, receivedVolume*10, 0);
+        currentVolume = receivedVolume*10;
+
+        // Mettre à jour le volume du MediaPlayer
+        setPlayerVolume(currentVolume, clientMaxVolume);
+
+        System.out.println("Volume mis à jour depuis le serveur : " + currentVolume + " (dénormalisé)");
+    }
+
 
     private void setPlayerVolume(int systemVolume, int customMaxVolume) {
-        float volume = (float) systemVolume / customMaxVolume;
-        mediaPlayer.setVolume(volume, volume);
+        musicThread.setPlayerVolume(systemVolume, customMaxVolume);
     }
 
     private void increaseVolume(int customMaxVolume) {
         if (currentVolume < customMaxVolume) {
             currentVolume += 5;
+            if (currentVolume > customMaxVolume) {
+                currentVolume = customMaxVolume; // Limiter à 60% du volume max
+            }
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, customMaxVolume);
-            System.out.println("Volume augmenté à : " + currentVolume);
+
+            // Assurez-vous que le message est envoyé au serveur
+            sendToServer("Volume actuel brut:" + currentVolume); // Message envoyé au serveur
+            System.out.println("Volume brut augmenté à : " + currentVolume);
         }
     }
 
     private void decreaseVolume() {
         if (currentVolume > 0) {
             currentVolume -= 5;
+            currentVolume = max(currentVolume, 0);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             setPlayerVolume(currentVolume, maxVolume);
+
+            // Assurez-vous que le message est envoyé au serveur
+            sendToServer("Volume actuel:" + currentVolume); // Message envoyé au serveur
             System.out.println("Volume diminué à : " + currentVolume);
         }
+    }
+
+
+    private int normalizeVolumeForServer(int volume, int maxVolume) {
+        return (int) ((volume / (float) maxVolume) * clientMaxVolume); // Échelle 0-90 pour normaliser
     }
 
     @Override
