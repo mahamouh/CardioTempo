@@ -235,7 +235,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void increaseVolume() {
         if (currentVolume < clientMaxVolume) {
-            currentVolume += 5;
+            currentVolume += 10;
             currentVolume = min(currentVolume, clientMaxVolume);
             System.out.println("custom volume increase : " + clientMaxVolume);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
@@ -249,7 +249,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void decreaseVolume() {
         if (currentVolume > 0) {
-            currentVolume -= 5;
+            currentVolume -= 10;
             currentVolume = max(currentVolume, 0);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
             System.out.println("max : " + clientMaxVolume);

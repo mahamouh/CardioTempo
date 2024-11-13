@@ -4,9 +4,11 @@ import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.Log;
+import android.widget.ProgressBar;
 import android.widget.SeekBar;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -86,6 +88,7 @@ public class ServerActivity extends AppCompatActivity {
                     InputStream inputStream = clientSocket.getInputStream();
                     byte[] buffer = new byte[1024];
                     int bytesRead;
+                    ProgressBar volumeSeekBar = findViewById(R.id.volumeSeekBar);;
                     while ((bytesRead = inputStream.read(buffer)) != -1) {
                         String message = new String(buffer, 0, bytesRead).trim();
                         Log.d(TAG, "Message reçu: " + message);
@@ -95,6 +98,17 @@ public class ServerActivity extends AppCompatActivity {
                             int volume = Integer.parseInt(parts[1].trim());
                             int normalized_volume = (int) (double) (volume / 10);
                             runOnUiThread(() -> volumeControl.setProgress(normalized_volume));  // Mettre à jour la SeekBar dans l'UI
+                        }
+                        if (message.equals("AUTO_MODE_ON")) {
+                            runOnUiThread(() -> {
+                                volumeSeekBar.setProgressDrawable(ContextCompat.getDrawable(ServerActivity.this, R.drawable.seekbar_green));
+                            });
+                            Log.d(TAG, "Mode automatique activé, SeekBar devient verte.");
+                        } else if (message.equals("AUTO_MODE_OFF")) {
+                            runOnUiThread(() -> {
+                                volumeSeekBar.setProgressDrawable(ContextCompat.getDrawable(ServerActivity.this, R.drawable.seekbar_default));
+                            });
+                            Log.d(TAG, "Mode automatique désactivé, SeekBar revient à la couleur par défaut.");
                         }
                     }
                 } catch (IOException e) {
