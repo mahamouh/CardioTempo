@@ -6,12 +6,10 @@ import android.media.MediaPlayer;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.widget.Button;
-import android.widget.SeekBar;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.PrintWriter;
 import java.net.Socket;
 
 public class MainActivity extends AppCompatActivity {
@@ -21,7 +19,7 @@ public class MainActivity extends AppCompatActivity {
     private int maxVolume;
     private int currentVolume;
     private Socket socket;
-    private static final String SERVER_IP = "100.83.111.17";
+    private static final String SERVER_IP = "100.69.247.101";
     private static final int SERVER_PORT = 5000;
     private boolean isAutoMode = false;
 
@@ -33,6 +31,12 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        // Define an uncaught exception handler for the app
+        Thread.setDefaultUncaughtExceptionHandler((thread, e) -> {
+            e.printStackTrace();
+            finish();  // Finish the activity if an uncaught exception occurs
+        });
 
         mediaPlayer = MediaPlayer.create(this, R.raw.jetplane);
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
@@ -79,7 +83,7 @@ public class MainActivity extends AppCompatActivity {
                         try {
                             String[] parts = message.split(":");
                             int newVolume = Integer.parseInt(parts[1].trim());
-                            updateVolumeFromServer(newVolume); // Utilise la méthode de normalisation
+                            updateVolumeFromServer(newVolume);
                         } catch (NumberFormatException e) {
                             System.out.println("Erreur de format du volume reçu : " + message);
                         }
@@ -96,7 +100,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateVolumeFromServer(int receivedVolume) {
-        int normalizedVolume = Math.min(receivedVolume, maxVolume); // Limite le volume reçu au max du client
+        int normalizedVolume = Math.min(receivedVolume, maxVolume);
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, normalizedVolume, 0);
         currentVolume = normalizedVolume;
         setPlayerVolume(currentVolume, maxVolume);
@@ -104,7 +108,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void sendCurrentVolumeToServer() {
-        // Envoie le volume sous forme de pourcentage
         int volumePercentage = (int) ((currentVolume / (float) maxVolume) * 100);
         new SendVolumeToServerTask().execute(volumePercentage);
     }
@@ -129,7 +132,6 @@ public class MainActivity extends AppCompatActivity {
     private class SendAutoModeNotificationTask extends AsyncTask<String, Void, Void> {
         @Override
         protected Void doInBackground(String... params) {
-            // Assurez-vous que le paramètre est bien passé
             String command = params[0];
 
             if (socket != null && socket.isConnected()) {
@@ -146,7 +148,6 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
     }
-
 
     private void setPlayerVolume(int systemVolume, int customMaxVolume) {
         float volume = (float) systemVolume / customMaxVolume;
@@ -174,12 +175,12 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        if (mediaPlayer != null) {
-            mediaPlayer.release();
-            mediaPlayer = null;
-        }
         try {
-            if (socket != null) {
+            if (mediaPlayer != null) {
+                mediaPlayer.release();
+                mediaPlayer = null;
+            }
+            if (socket != null && !socket.isClosed()) {
                 socket.close();
             }
         } catch (IOException e) {

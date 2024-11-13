@@ -6,7 +6,9 @@ import android.os.Bundle;
 import android.util.Log;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
+
 import androidx.appcompat.app.AppCompatActivity;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -35,7 +37,7 @@ public class ServerActivity extends AppCompatActivity {
         volumeControl.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                int clientMaxVolume = 150; // Volume max de l'échelle client
+                int clientMaxVolume = 150;
                 int normalizedVolume = normalizeVolumeForClient(progress, clientMaxVolume);
                 sendVolumeToClient(normalizedVolume);
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
@@ -70,34 +72,18 @@ public class ServerActivity extends AppCompatActivity {
 
             while ((bytesRead = inputStream.read(buffer)) != -1) {
                 String message = new String(buffer, 0, bytesRead).trim();
-                Log.d(TAG, "Message du client : " + message);
+                Log.d(TAG, "Message reçu: " + message);
 
-                ProgressBar volumeSeekBar = findViewById(R.id.volumeSeekBar);;
-                if (message.equals("AUTO_MODE_ON")) {
-                    // Change la couleur de la SeekBar en vert
-                    runOnUiThread(() -> {
-                        volumeSeekBar.setProgressDrawable(getResources().getDrawable(R.drawable.seekbar_green));
-                    });
-                    Log.d(TAG, "Mode automatique activé, SeekBar devient verte.");
-                } else if (message.equals("AUTO_MODE_OFF")) {
-                    // Réinitialise la couleur de la SeekBar
-                    runOnUiThread(() -> {
-                        volumeSeekBar.setProgressDrawable(getResources().getDrawable(R.drawable.seekbar_default));
-                    });
-                    Log.d(TAG, "Mode automatique désactivé, SeekBar revient à la couleur par défaut.");
+                if (message.contains("Volume actuel")) {
+                    String[] parts = message.split(":");
+                    int volume = Integer.parseInt(parts[1].trim());
+                    volumeControl.setProgress(volume);
                 }
             }
-
         } catch (IOException e) {
             e.printStackTrace();
-            Log.d(TAG, "Erreur du serveur : " + e.getMessage());
+            Log.e(TAG, "Erreur de serveur : " + e.getMessage());
         }
-    }
-
-
-
-    private int normalizeVolumeForClient(int progress, int clientMaxVolume) {
-        return (int) ((progress / (float) audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)) * clientMaxVolume);
     }
 
     private void sendVolumeToClient(int volume) {
@@ -116,9 +102,13 @@ public class ServerActivity extends AppCompatActivity {
                 }
             } catch (IOException e) {
                 e.printStackTrace();
-                Log.d(TAG, "Erreur lors de l'envoi du volume au client : " + e.getMessage());
+                Log.e(TAG, "Erreur d'envoi du volume au client : " + e.getMessage());
             }
             return null;
         }
+    }
+
+    private int normalizeVolumeForClient(int clientVolume, int clientMaxVolume) {
+        return (int) ((clientVolume / (float) audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)) * clientMaxVolume);
     }
 }
