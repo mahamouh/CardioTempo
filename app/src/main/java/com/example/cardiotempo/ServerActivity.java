@@ -93,7 +93,8 @@ public class ServerActivity extends AppCompatActivity {
                         if (message.contains("Volume actuel")) {
                             String[] parts = message.split(":");
                             int volume = Integer.parseInt(parts[1].trim());
-                            runOnUiThread(() -> volumeControl.setProgress(volume));  // Mettre à jour la SeekBar dans l'UI
+                            int normalized_volume = (int) (double) (volume / 10);
+                            runOnUiThread(() -> volumeControl.setProgress(normalized_volume));  // Mettre à jour la SeekBar dans l'UI
                         }
                     }
                 } catch (IOException e) {

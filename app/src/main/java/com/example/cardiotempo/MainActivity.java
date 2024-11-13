@@ -1,6 +1,7 @@
 package com.example.cardiotempo;
 
 import static java.lang.Math.max;
+import static java.lang.Math.min;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -34,7 +35,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static final float INITIAL_VOLUME_PERCENTAGE = 0.3f;
     private static final float CLIENT_MAX_VOLUME_PERCENTAGE = 0.6f; // 60% du volume max
-    private int clientMaxVolume;
+    private int clientMaxVolume = 90;
 
     public MusicThread musicThread;
 
@@ -112,12 +113,11 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        clientMaxVolume = (int) (maxVolume * CLIENT_MAX_VOLUME_PERCENTAGE); // 60% du volume max
         currentVolume = (int) (clientMaxVolume * INITIAL_VOLUME_PERCENTAGE);
         setPlayerVolume(currentVolume, clientMaxVolume);
 
         Button increaseVolumeButton = findViewById(R.id.increaseVolumeButton);
-        increaseVolumeButton.setOnClickListener(v -> increaseVolume(clientMaxVolume));
+        increaseVolumeButton.setOnClickListener(v -> increaseVolume());
 
         Button decreaseVolumeButton = findViewById(R.id.decreaseVolumeButton);
         decreaseVolumeButton.setOnClickListener(v -> decreaseVolume());
@@ -219,16 +219,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void updateVolumeFromServer(int receivedVolume) {
-        // Normalisation du volume reçu (échelle 0-150) à l'échelle système
-        int denormalizedVolume = (int) ((receivedVolume / 90.0) * clientMaxVolume);
-
-        // Vérifiez que le volume est dans les limites acceptables
-        if (denormalizedVolume > clientMaxVolume) {
-            denormalizedVolume = clientMaxVolume;
-        }
-        if (denormalizedVolume < 0) {
-            denormalizedVolume = 0;
-        }
 
         // Appliquer le volume au système audio
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, receivedVolume*10, 0);
@@ -237,7 +227,6 @@ public class MainActivity extends AppCompatActivity {
         // Mettre à jour le volume du MediaPlayer
         setPlayerVolume(currentVolume, clientMaxVolume);
 
-        System.out.println("Volume mis à jour depuis le serveur : " + currentVolume + " (dénormalisé)");
     }
 
 
@@ -245,14 +234,13 @@ public class MainActivity extends AppCompatActivity {
         musicThread.setPlayerVolume(systemVolume, customMaxVolume);
     }
 
-    private void increaseVolume(int customMaxVolume) {
-        if (currentVolume < customMaxVolume) {
+    private void increaseVolume() {
+        if (currentVolume < clientMaxVolume) {
             currentVolume += 5;
-            if (currentVolume > customMaxVolume) {
-                currentVolume = customMaxVolume; // Limiter à 60% du volume max
-            }
+            currentVolume = min(currentVolume, clientMaxVolume);
+            System.out.println("custom volume increase : " + clientMaxVolume);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
-            setPlayerVolume(currentVolume, customMaxVolume);
+            setPlayerVolume(currentVolume, clientMaxVolume);
 
             // Assurez-vous que le message est envoyé au serveur
             sendToServer("Volume actuel brut:" + currentVolume); // Message envoyé au serveur
@@ -265,17 +253,13 @@ public class MainActivity extends AppCompatActivity {
             currentVolume -= 5;
             currentVolume = max(currentVolume, 0);
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, currentVolume, 0);
-            setPlayerVolume(currentVolume, maxVolume);
+            System.out.println("max : " + clientMaxVolume);
+            setPlayerVolume(currentVolume, clientMaxVolume);
 
             // Assurez-vous que le message est envoyé au serveur
             sendToServer("Volume actuel:" + currentVolume); // Message envoyé au serveur
             System.out.println("Volume diminué à : " + currentVolume);
         }
-    }
-
-
-    private int normalizeVolumeForServer(int volume, int maxVolume) {
-        return (int) ((volume / (float) maxVolume) * clientMaxVolume); // Échelle 0-90 pour normaliser
     }
 
     @Override
